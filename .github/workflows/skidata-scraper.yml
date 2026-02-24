@@ -2,10 +2,14 @@ name: SKIDATA Scraper
 
 on:
   schedule:
-    # Run every 15 minutes
+    # Run every 15 minutes (UTC). NOTE: Requires public repo on GitHub Free;
+    # private repos need GitHub Pro+ for scheduled workflows.
     - cron: "*/15 * * * *"
   workflow_dispatch:
     # Allow manual trigger from GitHub Actions tab
+  repository_dispatch:
+    # Allows external triggers (e.g. cron-job.org) via GitHub API
+    types: [manual-trigger]
 
 jobs:
   run-pipeline:
