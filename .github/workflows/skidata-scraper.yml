@@ -2,9 +2,8 @@ name: SKIDATA Scraper
 
 on:
   schedule:
-    # Run every 15 minutes (UTC). NOTE: Requires public repo on GitHub Free;
-    # Run daily at 6:00 AM Saudi time (UTC+3) = 3:00 AM UTC
-    - cron: "0 3 * * *"
+    # Test: every 10 min. (Requires PUBLIC repo on GitHub Free)
+    - cron: "*/10 * * * *"
   workflow_dispatch:
     # Allow manual trigger from GitHub Actions tab
   repository_dispatch:
