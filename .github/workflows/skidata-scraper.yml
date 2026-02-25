@@ -1,9 +1,6 @@
 name: SKIDATA Scraper
 
 on:
-  schedule:
-    # Test: every 10 min. (Requires PUBLIC repo on GitHub Free)
-    - cron: "*/10 * * * *"
   workflow_dispatch:
     # Allow manual trigger from GitHub Actions tab
   repository_dispatch:
