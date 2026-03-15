@@ -56,7 +56,7 @@ async def run_in_depth_flow(
     header_selector: str,
 ) -> None:
     """
-    In the reports tab: open the given sheet, apply date filter (first row),
+    In the reports tab: open the given sheet, apply date filter (second row),
     expand all, download as Data, and save with yesterday's date + file_base_name.
     header_selector: CSS selector for the pivot table header (e.g. "header#CwPV_title").
     """
@@ -79,7 +79,7 @@ async def run_in_depth_flow(
     await sheet_card.click()
     print(f"Opened '{sheet_display_name}' sheet.")
 
-    # 2) Date filter: open, check if first row already selected; if not, select it and confirm
+    # 2) Date filter: open, check if second row already selected; if not, select it and confirm
     date_button_selector = (
         "div.lui-button.qv-pt-meta-button:has(.meta-text[title='Date'])"
     )
@@ -92,27 +92,27 @@ async def run_in_depth_flow(
     await asyncio.sleep(0.8)
 
     listbox_base = "div.RowColumn-barContainer[data-testid='listbox.item']"
-    first_row_selector = f"{listbox_base}:has(div[data-n='0'])"
+    second_row_selector = f"{listbox_base}:has(div[data-n='1'])"
     print("Waiting for date list (RowColumn-barContainer)...")
     list_frame = await find_frame_with_selector(page, listbox_base)
     if list_frame is None:
         raise RuntimeError("Date list (RowColumn-barContainer) not found in any frame.")
-    first_date_item = await list_frame.query_selector(first_row_selector)
-    if first_date_item is None:
-        raise RuntimeError("First date row (data-n=0) not found in Date selection list.")
+    second_date_item = await list_frame.query_selector(second_row_selector)
+    if second_date_item is None:
+        raise RuntimeError("Second date row (data-n=1) not found in Date selection list.")
 
-    row_el = await first_date_item.query_selector('[role="row"]')
+    row_el = await second_date_item.query_selector('[role="row"]')
     is_date_already_selected = (
         row_el is not None
         and await row_el.get_attribute("aria-selected") == "true"
     )
 
     if is_date_already_selected:
-        print("Date (first row) is already selected. Closing filter without changes.")
+        print("Date (second row) is already selected. Closing filter without changes.")
         await page.keyboard.press("Escape")
         await asyncio.sleep(0.5)
     else:
-        await first_date_item.click()
+        await second_date_item.click()
         confirm_button_selector = (
             "button[data-testid='actions-toolbar-confirm'][title='Confirm selection']"
         )
@@ -205,7 +205,7 @@ async def run_parking_transactions_flow(
     download_dir: str,
 ) -> None:
     """
-    In the reports tab: open Parking Transactions sheet, apply date filter (first row),
+    In the reports tab: open Parking Transactions sheet, apply date filter (second row),
     right-click header, Download as → Data, click Export, then save with yesterday's date.
     Uses filter pane Date (different from pivot meta button) and Export button (no Expand all).
     """
@@ -246,27 +246,27 @@ async def run_parking_transactions_flow(
     await asyncio.sleep(0.8)
 
     listbox_base = "div.RowColumn-barContainer[data-testid='listbox.item']"
-    first_row_selector = f"{listbox_base}:has(div[data-n='0'])"
+    second_row_selector = f"{listbox_base}:has(div[data-n='1'])"
     print("Waiting for date list (RowColumn-barContainer)...")
     list_frame = await find_frame_with_selector(page, listbox_base)
     if list_frame is None:
         raise RuntimeError("Date list (RowColumn-barContainer) not found in any frame.")
-    first_date_item = await list_frame.query_selector(first_row_selector)
-    if first_date_item is None:
-        raise RuntimeError("First date row (data-n=0) not found in Date selection list.")
+    second_date_item = await list_frame.query_selector(second_row_selector)
+    if second_date_item is None:
+        raise RuntimeError("Second date row (data-n=1) not found in Date selection list.")
 
-    row_el = await first_date_item.query_selector('[role="row"]')
+    row_el = await second_date_item.query_selector('[role="row"]')
     is_date_already_selected = (
         row_el is not None
         and await row_el.get_attribute("aria-selected") == "true"
     )
 
     if is_date_already_selected:
-        print("Date (first row) is already selected. Closing filter without changes.")
+        print("Date (second row) is already selected. Closing filter without changes.")
         await page.keyboard.press("Escape")
         await asyncio.sleep(0.5)
     else:
-        await first_date_item.click()
+        await second_date_item.click()
         confirm_button_selector = (
             "button[data-testid='actions-toolbar-confirm'][title='Confirm selection']"
         )
