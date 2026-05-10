@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -34,17 +35,35 @@ async def find_frame_with_selector(
     page: Page,
     selector: str,
     per_frame_timeout_ms: int = 30_000,
+    total_timeout_ms: Optional[int] = None,
 ) -> Optional[Frame]:
     """
-    Search all frames in the page for one that contains the given selector.
-    Returns the first matching Frame, or None if not found within the per-frame timeout.
+    Search all frames for one that contains the given selector.
+
+    Qlik Sense keeps adding iframes after the first paint, so we must refresh
+    ``page.frames`` on each pass. A single ``for frame in page.frames`` snapshot
+    can miss the frame that later receives the sheet list.
+
+    ``per_frame_timeout_ms`` caps one wait_for_selector call on one frame.
+    ``total_timeout_ms`` (default: max(180s, 2 * per_frame)) is the overall budget.
     """
-    for frame in page.frames:
-        try:
-            await frame.wait_for_selector(selector, timeout=per_frame_timeout_ms)
-            return frame
-        except PlaywrightTimeoutError:
-            continue
+    if total_timeout_ms is None:
+        total_timeout_ms = max(180_000, per_frame_timeout_ms * 2)
+    deadline = time.monotonic() + total_timeout_ms / 1000.0
+
+    while time.monotonic() < deadline:
+        frames = list(page.frames)
+        for frame in frames:
+            if time.monotonic() >= deadline:
+                break
+            remaining_ms = int(max(0, (deadline - time.monotonic()) * 1000))
+            timeout_ms = min(per_frame_timeout_ms, max(250, remaining_ms))
+            try:
+                await frame.wait_for_selector(selector, timeout=timeout_ms)
+                return frame
+            except PlaywrightTimeoutError:
+                continue
+        await asyncio.sleep(0.35)
     return None
 
 
@@ -61,18 +80,49 @@ async def run_in_depth_flow(
     header_selector: CSS selector for the pivot table header (e.g. "header#CwPV_title").
     """
     await page.evaluate("window.scrollTo(0, 0)")
-    await page.wait_for_load_state("networkidle", timeout=60_000)
+    try:
+        await page.wait_for_load_state("networkidle", timeout=60_000)
+    except PlaywrightTimeoutError:
+        await page.wait_for_load_state("load")
     await asyncio.sleep(3)
 
-    # 1) Open the sheet card
-    sheet_selector = f"div.qv-content-li-inner:has-text('{sheet_display_name}')"
+    # 1) Open the sheet card (prefer span[title] like Qlik hub tiles; then :has-text)
+    sheet_selector_span = (
+        f"div.qv-content-li-inner:has(span[title='{sheet_display_name}'])"
+    )
+    sheet_selector_text = f"div.qv-content-li-inner:has-text('{sheet_display_name}')"
     print(f"Waiting for '{sheet_display_name}' sheet card...")
-    sheet_frame = await find_frame_with_selector(page, sheet_selector)
+    sheet_frame = await find_frame_with_selector(
+        page, sheet_selector_span, per_frame_timeout_ms=8_000, total_timeout_ms=180_000
+    )
+    sheet_selector = sheet_selector_span
     if sheet_frame is None:
+        sheet_frame = await find_frame_with_selector(
+            page, sheet_selector_text, per_frame_timeout_ms=8_000, total_timeout_ms=180_000
+        )
+        sheet_selector = sheet_selector_text
+    if sheet_frame is None:
+        for frame in list(page.frames):
+            try:
+                titles = await frame.eval_on_selector_all(
+                    "div.qv-content-li-inner",
+                    "els => els.map(el => el.textContent && el.textContent.trim())",
+                )
+                if titles:
+                    print(
+                        f"Debug: frame {frame.url} qv-content-li-inner texts:",
+                        titles[:25],
+                    )
+            except Exception:
+                continue
         raise RuntimeError(
             f"Could not find '{sheet_display_name}' sheet card in any frame."
         )
     sheet_card = await sheet_frame.query_selector(sheet_selector)
+    if sheet_card is None and sheet_selector == sheet_selector_span:
+        sheet_card = await sheet_frame.query_selector(sheet_selector_text)
+        if sheet_card is not None:
+            sheet_selector = sheet_selector_text
     if sheet_card is None:
         raise RuntimeError("Sheet card element not found after frame detection.")
     await sheet_card.scroll_into_view_if_needed()
@@ -214,7 +264,10 @@ async def run_parking_transactions_flow(
     header_selector = "header#VvpsUS_title"
 
     await page.evaluate("window.scrollTo(0, 0)")
-    await page.wait_for_load_state("networkidle", timeout=60_000)
+    try:
+        await page.wait_for_load_state("networkidle", timeout=60_000)
+    except PlaywrightTimeoutError:
+        await page.wait_for_load_state("load")
     await asyncio.sleep(3)
 
     # 1) Open the Parking Transactions sheet card (use span[title] to avoid matching "Personalized Parkers")
@@ -488,7 +541,10 @@ async def login_and_open_portal() -> None:
         await new_page.wait_for_load_state("domcontentloaded")
         print("New reports tab detected. URL:", new_page.url)
         # Wait for reports page to fully load before interacting.
-        await new_page.wait_for_load_state("networkidle", timeout=60_000)
+        try:
+            await new_page.wait_for_load_state("networkidle", timeout=60_000)
+        except PlaywrightTimeoutError:
+            await new_page.wait_for_load_state("load")
         await asyncio.sleep(5)
 
         # Run Revenue in Depth Analysis.
@@ -519,7 +575,10 @@ async def login_and_open_portal() -> None:
 
         await new_page.wait_for_load_state("domcontentloaded")
         print("New reports tab detected for Access In Depth. URL:", new_page.url)
-        await new_page.wait_for_load_state("networkidle", timeout=60_000)
+        try:
+            await new_page.wait_for_load_state("networkidle", timeout=60_000)
+        except PlaywrightTimeoutError:
+            await new_page.wait_for_load_state("load")
         await asyncio.sleep(5)
 
         # Run Access In Depth Analysis.
@@ -549,7 +608,10 @@ async def login_and_open_portal() -> None:
 
         await new_page.wait_for_load_state("domcontentloaded")
         print("New reports tab detected for System Event In Depth. URL:", new_page.url)
-        await new_page.wait_for_load_state("networkidle", timeout=60_000)
+        try:
+            await new_page.wait_for_load_state("networkidle", timeout=60_000)
+        except PlaywrightTimeoutError:
+            await new_page.wait_for_load_state("load")
         await asyncio.sleep(5)
 
         # Run System Event In Depth Analysis.
@@ -581,7 +643,10 @@ async def login_and_open_portal() -> None:
 
         await new_page.wait_for_load_state("domcontentloaded")
         print("New reports tab detected for Parking Transactions. URL:", new_page.url)
-        await new_page.wait_for_load_state("networkidle", timeout=60_000)
+        try:
+            await new_page.wait_for_load_state("networkidle", timeout=60_000)
+        except PlaywrightTimeoutError:
+            await new_page.wait_for_load_state("load")
         await asyncio.sleep(5)
 
         # Run Parking Transactions.
